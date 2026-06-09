@@ -39,7 +39,7 @@ stock_id = st.sidebar.text_input("股票代號", "2330.TW")
 
 # 加上 .date() 確保一開始就是純日期格式，避免 yfinance 初次載入報錯
 default_start = datetime(2025, 10, 10).date()
-default_end = datetime(2026, 5, 22).date()
+default_end = datetime(2026, 6, 22).date()
 
 target_start = st.sidebar.date_input("觀測起始日", default_start)
 target_end = st.sidebar.date_input("觀測結束日", default_end)
