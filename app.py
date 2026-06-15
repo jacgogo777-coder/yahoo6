@@ -38,9 +38,9 @@ st.sidebar.header("⚙️ 參數設定")
 stock_id = st.sidebar.text_input("股票代號", "2330.TW")
 
 # 加上 .date() 確保一開始就是純日期格式，避免 yfinance 初次載入報錯
-default_start = datetime(2025, 10, 10).date()
-default_end = datetime(2026, 6, 22).date()
 
+default_end = datetime.today().date()
+default_start = (datetime.today()-timedelta(180)).date()
 target_start = st.sidebar.date_input("觀測起始日", default_start)
 target_end = st.sidebar.date_input("觀測結束日", default_end)
 warmup_days = st.sidebar.slider("指標預熱天數 (用於 EMA/RSI 準確度)", 30, 100, 60)
@@ -206,7 +206,13 @@ ax1.set_title(f"【{stock_id}】綜合技術分析", fontsize=16)
 # --- Ax2: OBV 與 成交量 ---
 ax2.set_xticks(x_ticks_pos)
 ax2.set_xticklabels([]) # 隱藏重疊字體
-vol_colors = np.where(df['Close'] > df['Close'].shift(1), 'r', 'g')
+conditions = [
+    df['Close'] > df['Close'].shift(1),  # 漲 -> 紅
+    df['Close'] < df['Close'].shift(1)   # 跌 -> 綠
+]
+choices = ['r', 'g']
+vol_colors = np.select(conditions, choices, default='gray')
+
 ax2.plot(df['OBV'], color='purple', ls='--', label='OBV')
 ax2_v = ax2.twinx()
 ax2_v.bar(df.index, df['Volume'], color=vol_colors, alpha=0.3, width=0.8)
@@ -260,3 +266,158 @@ st.pyplot(fig)
 
 st.divider()
 st.info("💡 課程提示：觀察 MACD 柱狀圖與 RSI 超買超賣區，配合 BIAS 乖離率差距，可更全面判斷趨勢強弱。")
+
+# ==========================================
+# 5. 步驟 4：進場 / 獲利了結 綜合分析
+# ==========================================
+st.header("Step 4: 進場 / 獲利了結 綜合分析")
+st.caption("以下根據觀測區間「最後一個交易日」的指標數值自動研判，僅供技術面教學參考，非投資建議。")
+
+
+def _f(value):
+    """安全取出純量數值，遇到 NaN 回傳 None。"""
+    try:
+        v = float(value)
+        return None if np.isnan(v) else v
+    except (TypeError, ValueError):
+        return None
+
+
+# 取最後一筆與前一筆，用於判斷交叉與趨勢方向
+last = df.iloc[-1]
+prev = df.iloc[-2] if len(df) >= 2 else last
+
+close = _f(last['Close'])
+sma5, sma10, sma20 = _f(last['SMA_5']), _f(last['SMA_10']), _f(last['SMA_20'])
+upper, lower = _f(last['upper_band']), _f(last['lower_band'])
+k, d = _f(last['K']), _f(last['D'])
+k_prev, d_prev = _f(prev['K']), _f(prev['D'])
+dif, macd_sig = _f(last['DIF']), _f(last['MACD'])
+dif_prev, macd_prev = _f(prev['DIF']), _f(prev['MACD'])
+rsi5 = _f(last['RSI5'])
+bias20 = _f(last['BIAS20'])
+obv_last, obv_prev5 = _f(last['OBV']), _f(df['OBV'].iloc[-6]) if len(df) >= 6 else _f(prev['OBV'])
+
+signals = []  # 每項 (指標, 訊號文字, 分數)；分數 +偏多 / -偏空
+
+
+# 1. 均線排列與布林位置
+if None not in (sma5, sma10, sma20):
+    if sma5 > sma10 > sma20:
+        signals.append(("均線排列", "🔴 多頭排列（5>10>20），趨勢偏多", 1))
+    elif sma5 < sma10 < sma20:
+        signals.append(("均線排列", "🟢 空頭排列（5<10<20），趨勢偏空", -1))
+    else:
+        signals.append(("均線排列", "⚪ 均線糾結，方向未明", 0))
+if None not in (close, upper, lower):
+    if close >= upper:
+        signals.append(("布林通道", "🟢 股價觸及或突破上軌，短線過熱、留意獲利了結", -1))
+    elif close <= lower:
+        signals.append(("布林通道", "🔴 股價觸及或跌破下軌，超跌可留意反彈進場", 1))
+    else:
+        signals.append(("布林通道", "⚪ 股價於布林通道中段，無極端訊號", 0))
+
+# 2. KDJ 交叉與超買超賣
+if None not in (k, d, k_prev, d_prev):
+    if k_prev <= d_prev and k > d:
+        signals.append(("KDJ", f"🔴 K 線由下往上穿越 D 線（黃金交叉，K={k:.1f}），偏多", 1))
+    elif k_prev >= d_prev and k < d:
+        signals.append(("KDJ", f"🟢 K 線由上往下跌破 D 線（死亡交叉，K={k:.1f}），偏空", -1))
+    elif k < 20 and d < 20:
+        signals.append(("KDJ", f"🔴 K、D 同處超賣區（<20），可留意反彈進場", 1))
+    elif k > 80 and d > 80:
+        signals.append(("KDJ", f"🟢 K、D 同處超買區（>80），短線過熱可獲利了結", -1))
+    else:
+        signals.append(("KDJ", f"⚪ KDJ 無明顯交叉訊號（K={k:.1f}, D={d:.1f}）", 0))
+
+# 3. OBV 資金流向
+if None not in (obv_last, obv_prev5):
+    if obv_last > obv_prev5:
+        signals.append(("OBV 能量潮", "🔴 OBV 近 5 日走高，量能支撐、資金流入", 1))
+    elif obv_last < obv_prev5:
+        signals.append(("OBV 能量潮", "🟢 OBV 近 5 日走低，量能轉弱、資金流出", -1))
+    else:
+        signals.append(("OBV 能量潮", "⚪ OBV 持平，量能無明顯方向", 0))
+
+# 4. MACD 交叉與多空軸
+if None not in (dif, macd_sig, dif_prev, macd_prev):
+    if dif_prev <= macd_prev and dif > macd_sig:
+        signals.append(("MACD", "🔴 DIF 向上穿越訊號線（黃金交叉），動能轉強", 1))
+    elif dif_prev >= macd_prev and dif < macd_sig:
+        signals.append(("MACD", "🟢 DIF 向下跌破訊號線（死亡交叉），動能轉弱", -1))
+    elif dif > 0 and dif > macd_sig:
+        signals.append(("MACD", "🔴 DIF 位於零軸之上且高於訊號線，多方動能延續", 1))
+    elif dif < 0 and dif < macd_sig:
+        signals.append(("MACD", "🟢 DIF 位於零軸之下且低於訊號線，空方動能延續", -1))
+    else:
+        signals.append(("MACD", "⚪ MACD 動能中性", 0))
+
+# 5. RSI 超買超賣
+if rsi5 is not None:
+    if rsi5 >= 70:
+        signals.append(("RSI", f"🟢 RSI5={rsi5:.1f} 進入超買區（≥70），漲多過熱、可獲利了結", -1))
+    elif rsi5 <= 30:
+        signals.append(("RSI", f"🔴 RSI5={rsi5:.1f} 進入超賣區（≤30），跌深可留意進場", 1))
+    else:
+        signals.append(("RSI", f"⚪ RSI5={rsi5:.1f} 位於中性區間（30~70）", 0))
+
+# 6. BIAS 乖離率
+if bias20 is not None:
+    if bias20 >= 8:
+        signals.append(("BIAS 乖離率", f"🟢 20日乖離率 {bias20:+.1f}% 過大，股價偏離均線過遠、回檔風險升高", -1))
+    elif bias20 <= -8:
+        signals.append(("BIAS 乖離率", f"🔴 20日乖離率 {bias20:+.1f}% 過低，超跌反彈機會浮現", 1))
+    else:
+        signals.append(("BIAS 乖離率", f"⚪ 20日乖離率 {bias20:+.1f}% 在合理範圍，無極端訊號", 0))
+
+# --- 綜合評分與結論 ---
+total_score = sum(s[2] for s in signals)
+bull = sum(1 for s in signals if s[2] > 0)
+bear = sum(1 for s in signals if s[2] < 0)
+
+col_a, col_b = st.columns([1, 2])
+with col_a:
+    st.metric("綜合多空評分", f"{total_score:+d}", help="各指標偏多 +1、偏空 -1 的加總")
+    st.write(f"🔴 偏多訊號：**{bull}** 項　🟢 偏空訊號：**{bear}** 項")
+with col_b:
+    if total_score >= 3:
+        # 台股紅漲綠跌：偏多用紅框 (st.error 為紅色)
+        st.error("**綜合研判：偏多 → 可留意進場 / 續抱**\n\n多數指標站在多方，趨勢與動能一致向上。若尚未持有可分批佈局，已持有者續抱，並設好停損（如跌破 20 日均線或布林下軌）。")
+    elif total_score <= -3:
+        # 台股紅漲綠跌：偏空用綠框 (st.success 為綠色)
+        st.success("**綜合研判：偏空 → 留意獲利了結 / 觀望**\n\n多數指標轉弱或進入過熱區，上漲動能衰竭。持有者可考慮分批獲利了結或減碼，空手者宜觀望、勿追高。")
+    else:
+        st.warning("**綜合研判：中性 → 區間整理 / 等待訊號**\n\n多空訊號互有拉鋸，方向尚未明朗。建議等待均線、MACD、KDJ 出現一致訊號後再決定進出場。")
+
+st.subheader("📋 各指標逐項研判")
+signal_df = pd.DataFrame(
+    [(name, text, "偏多" if sc > 0 else ("偏空" if sc < 0 else "中性")) for name, text, sc in signals],
+    columns=["指標", "目前研判", "方向"],
+)
+st.table(signal_df)
+
+with st.expander("📖 如何用這 6 大指標判斷進場與獲利了結？"):
+    st.markdown("""
+    技術指標沒有單一萬靈丹，重點是**多項指標互相驗證（共振）**。以下是常見的判讀原則：
+
+    **🔴 偏向「進場 / 加碼」的訊號**
+    - **均線多頭排列**：5 日 > 10 日 > 20 日，且股價站上均線，代表趨勢向上。
+    - **KDJ 黃金交叉**：K 線於低檔（<20）由下往上穿越 D 線。
+    - **MACD 黃金交叉**：DIF 向上突破訊號線，柱狀圖由綠翻紅，最好發生在零軸附近或之上。
+    - **RSI 由超賣區（<30）回升**：跌深出現買盤。
+    - **OBV 持續走高**：股價上漲伴隨量能支撐，較不易是假突破。
+    - **布林下軌 + BIAS 負乖離過大**：超跌後的反彈機會。
+
+    **🟢 偏向「獲利了結 / 減碼」的訊號**
+    - **均線空頭排列**或股價跌破 20 日均線：趨勢轉弱。
+    - **KDJ 在高檔（>80）死亡交叉**：短線過熱、動能反轉。
+    - **MACD 死亡交叉**：DIF 跌破訊號線，柱狀圖由紅翻綠。
+    - **RSI 進入超買區（>70）**：漲多過熱，續抱風險升高。
+    - **股價觸及布林上軌 + BIAS 正乖離過大（如 >8%）**：偏離均線太遠，易拉回。
+    - **OBV 背離**：股價創新高但 OBV 未同步走高，量能不支持，留意假突破。
+
+    **⚠️ 實務提醒**
+    - 指標多為「落後 / 同步」訊號，無法預測未來；務必搭配**停損紀律**（例如跌破 20 日均線或布林下軌出場）。
+    - 不同指標訊號矛盾時，以**趨勢方向（均線、MACD）為主，擺盪指標（KDJ、RSI、BIAS）為輔**。
+    - 本頁面的「綜合多空評分」是把各項訊號簡單加總的教學示範，實際操作仍需考量基本面、籌碼面與大盤環境。
+    """)
