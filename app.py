@@ -156,8 +156,8 @@ df = df_calculated.loc[mask_start:].copy()
 # 將最終繪圖用的 DataFrame 索引轉為字串格式
 df.index = df.index.map(lambda x: x.strftime('%y-%m-%d'))
 
-with st.expander("🔍 查看已計算的指標數據 (觀測區間首五筆)"):
-    st.dataframe(df.head())
+with st.expander("🔍 查看已計算的指標數據 (觀測區間末七筆)"):
+    st.dataframe(df.tail(7))
 
 # ==========================================
 # 4. 步驟 3：專業多圖層視覺化
