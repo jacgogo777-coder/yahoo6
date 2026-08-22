@@ -260,7 +260,7 @@ ax2.legend(loc='upper right', fontsize='small')
 red_patch = mpatches.Patch(color='red', label='紅色漲')
 green_patch = mpatches.Patch(color='green', label='綠色跌')
 gray_patch = mpatches.Patch(color='gray', label='灰持平')
-ax2_v.legend(handles=[red_patch, green_patch,gray_patch],loc=2)
+ax2_v.legend(handles=[red_patch, green_patch,gray_patch],loc=2,title="交易量")
 # --- Ax3: KDJ ---
 ax3.plot(df['K'], label='K線', color='cyan', lw=1)
 ax3.plot(df['D'], label='D線', color='purple', lw=1)
