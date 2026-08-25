@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib
 import os
 from matplotlib import font_manager
+import matplotlib.patches as mpatches
 
 # ==========================================
 # 0. 網頁基本配置與字型處理
@@ -77,8 +78,8 @@ def load_stock_data(symbol, start_dt, end_dt, warmup):
         # 展平欄位名稱 (若 yfinance 回傳 MultiIndex)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-        # 清洗壞資料：Yahoo 偶爾回傳 OHLC 為 NaN 或 0 的異常列（如 0050.TW），
-        # 會造成 K 線插到 0、支撐位 = 0 與後續 NoneType 運算錯誤
+    # 清洗壞資料：Yahoo 偶爾回傳 OHLC 為 NaN 或 0 的異常列（如 0050.TW），
+    # 會造成 K 線插到 0、支撐位 = 0 與後續 NoneType 運算錯誤
     ohlc_cols = ['Open', 'High', 'Low', 'Close']
     df = df.dropna(subset=ohlc_cols)
     df = df[(df[ohlc_cols] > 0).all(axis=1)]
@@ -222,7 +223,11 @@ ax2.plot(df['OBV'], color='purple', ls='--', label='OBV')
 ax2_v = ax2.twinx()
 ax2_v.bar(df.index, df['Volume'], color=vol_colors, alpha=0.3, width=0.8)
 ax2.set_title("OBV 能量潮")
-ax2.legend(loc='upper left', fontsize='small')
+ax2.legend(loc=2, fontsize='small')
+red_patch = mpatches.Patch(color='red', label='紅色漲')
+green_patch = mpatches.Patch(color='green', label='綠色跌')
+gray_patch = mpatches.Patch(color='gray', label='灰持平')
+ax2_v.legend(handles=[red_patch, green_patch,gray_patch],loc=1,title="交易量")
 
 # --- Ax3: KDJ ---
 ax3.plot(df['K'], label='K線', color='cyan', lw=1)
@@ -242,7 +247,11 @@ ax4.axhline(0, color='gray', ls='--', lw=1)
 ax4.set_xticks(x_ticks_pos)
 ax4.set_xticklabels([]) # 隱藏重疊字體
 ax4.set_title("MACD 指標")
-ax4.legend(loc='upper left', fontsize='small')
+macd_red_patch = mpatches.Patch(color='red', label='MACD多頭')
+macd_green_patch = mpatches.Patch(color='green', label='MACD空頭')
+handles, labels = ax4.get_legend_handles_labels()
+handles.extend([macd_red_patch, macd_green_patch])
+ax4.legend(handles=handles, loc=2, fontsize='small', framealpha=0.5)
 
 # --- Ax5: RSI ---
 ax5.plot(df['RSI5'], label='RSI5', color='cyan', lw=1)
@@ -264,7 +273,12 @@ ax6.axhline(0, color='gray', ls='--', lw=1)
 ax6.set_xticks(x_ticks_pos)
 ax6.set_xticklabels([]) # 最底部的圖表才顯示日期
 ax6.set_title("BIAS 乖離率")
-ax6.legend(loc='upper left', fontsize='small')
+bias_red_patch = mpatches.Patch(color='red', label='BIAS正強')
+bias_green_patch = mpatches.Patch(color='green', label='BIAS負弱')
+handles, labels = ax6.get_legend_handles_labels()
+handles.extend([bias_red_patch, bias_green_patch])
+ax6.set_xticks(x_ticks_pos, labels=x_ticks_labels)
+ax6.legend(handles=handles, loc=2, fontsize='small', framealpha=0.5)
 
 # 渲染到網頁
 st.pyplot(fig)
