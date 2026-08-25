@@ -77,6 +77,11 @@ def load_stock_data(symbol, start_dt, end_dt, warmup):
         # 展平欄位名稱 (若 yfinance 回傳 MultiIndex)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
+        # 清洗壞資料：Yahoo 偶爾回傳 OHLC 為 NaN 或 0 的異常列（如 0050.TW），
+        # 會造成 K 線插到 0、支撐位 = 0 與後續 NoneType 運算錯誤
+    ohlc_cols = ['Open', 'High', 'Low', 'Close']
+    df = df.dropna(subset=ohlc_cols)
+    df = df[(df[ohlc_cols] > 0).all(axis=1)]
     return df
 
 df_all = load_stock_data(stock_id, target_start, target_end, warmup_days)
