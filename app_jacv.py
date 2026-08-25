@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-JAC 台股分析版 (app_jac.py)
+JAC 台股分析版 (app_jacv.py)上傳streamlit平台版本
+有手動設定交易量,MACD,BIAS圖例和密碼保護
 ============================
 以 app.py 為基礎，整合「JAC台股分析版.txt」分析心法：
 1. OBV 能量潮強化：加入 OBV MA10、量價齊揚/齊跌、頂/底背離偵測（優先級 1）
@@ -11,6 +12,8 @@ JAC 台股分析版 (app_jac.py)
 5. JAC 智能警示報告：優先級 1/2/3 警示清單、綜合評分（-100 ~ +100）、
    關鍵數據、操作建議、風險提示
 """
+
+import hmac
 
 import streamlit as st
 import yfinance as yf
@@ -28,6 +31,51 @@ import matplotlib.patches as mpatches
 # 0. 網頁基本配置與字型處理
 # ==========================================
 st.set_page_config(page_title="JAC 台股智能分析版", layout="wide")
+
+
+def password_required():
+    """只有輸入 Streamlit Secrets 中的密碼後，才允許顯示主頁。"""
+    if st.session_state.get("authenticated", False):
+        return True
+
+    try:
+        expected_password = str(st.secrets["APP_PASSWORD"])
+    except (FileNotFoundError, KeyError):
+        st.error("尚未設定登入密碼，請先在 Streamlit 平台的 Secrets 加入 APP_PASSWORD。")
+        st.code('APP_PASSWORD = "請設定你的密碼"', language="toml")
+        return False
+
+    if not expected_password:
+        st.error("APP_PASSWORD 不可為空白，請到 Streamlit 平台重新設定。")
+        return False
+
+    st.title("🔐 JAC 台股智能分析版")
+    st.caption("請輸入密碼後進入分析主頁。")
+
+    with st.form("login_form", clear_on_submit=True):
+        entered_password = st.text_input(
+            "密碼",
+            type="password",
+            placeholder="請輸入登入密碼",
+        )
+        submitted = st.form_submit_button("登入", width="stretch")
+
+    if submitted:
+        if hmac.compare_digest(entered_password, expected_password):
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("密碼錯誤，請重新輸入。")
+
+    return False
+
+
+if not password_required():
+    st.stop()
+
+if st.sidebar.button("🔒 登出", width="stretch"):
+    st.session_state["authenticated"] = False
+    st.rerun()
 
 # 處理中文字型 (解決雲端 Linux 亂碼問題)
 font_path = "NotoSansTC-Regular.ttf"
