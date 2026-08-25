@@ -102,7 +102,9 @@ def load_stock_data(symbol, start_dt, end_dt, warmup):
         # 會造成 K 線插到 0、支撐位 = 0 與後續 NoneType 運算錯誤
         ohlc_cols = ['Open', 'High', 'Low', 'Close']
         df = df.dropna(subset=ohlc_cols)
-        df = df[(df[ohlc_cols] > 0).all(axis=1)]
+        #df = df[(df[ohlc_cols] > 0).all(axis=1)]
+        valid_mask = (df[ohlc_cols] > 0).all(axis=1)
+        df = df[valid_mask]
     return df
 
 df_all = load_stock_data(stock_id, target_start, target_end, warmup_days)
@@ -256,11 +258,11 @@ ax2.plot(df['OBV_MA10'], color='orange', lw=1, label='OBV MA10')
 ax2_v = ax2.twinx()
 ax2_v.bar(df.index, df['Volume'], color=vol_colors, alpha=0.3, width=0.8)
 ax2.set_title("OBV 能量潮（含 MA10 趨勢基準）")
-ax2.legend(loc='upper right', fontsize='small')
+ax2.legend(loc=2, fontsize='small')
 red_patch = mpatches.Patch(color='red', label='紅色漲')
 green_patch = mpatches.Patch(color='green', label='綠色跌')
 gray_patch = mpatches.Patch(color='gray', label='灰持平')
-ax2_v.legend(handles=[red_patch, green_patch,gray_patch],loc=2,title="交易量")
+ax2_v.legend(handles=[red_patch, green_patch,gray_patch],loc=1,title="交易量")
 # --- Ax3: KDJ ---
 ax3.plot(df['K'], label='K線', color='cyan', lw=1)
 ax3.plot(df['D'], label='D線', color='purple', lw=1)
@@ -314,7 +316,7 @@ bias_green_patch = mpatches.Patch(color='green', label='BIAS負弱')
 handles, labels = ax6.get_legend_handles_labels()
 handles.extend([bias_red_patch, bias_green_patch])
 ax6.set_xticks(x_ticks_pos, labels=x_ticks_labels)
-ax6.legend(handles=handles, loc=1, fontsize='small', framealpha=0.5)
+ax6.legend(handles=handles, loc=2, fontsize='small', framealpha=0.5)
 
 # 渲染到網頁
 st.pyplot(fig)
